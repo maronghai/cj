@@ -32,12 +32,18 @@ cj [options] [<input>]
 Options:
   -p, --pretty    pretty-print JSON output (default: compact)
   -d, --decode    reverse: JSON → .cc
+  -e, --encode    forward: .cc → JSON (default; explicit form)
   -h, --help      show help
 ```
 
 Reads from stdin if no input file is given. **Format auto-detected** by
-the first non-whitespace byte: `{` or `[` → JSON, anything else → `.cc`.
-Override with `-d`.
+structural rules:
+- starts with `{` / `[` → JSON object/array
+- starts with `"` / digit / `-digit` → JSON string/number
+- starts with `true` / `false` / `null` followed by only whitespace → JSON literal
+- otherwise → `.cc`
+
+Override with `-d` (force JSON → `.cc`) or `-e` (force `.cc` → JSON).
 
 ### Examples
 

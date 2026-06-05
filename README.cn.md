@@ -30,6 +30,7 @@ cj [options] [<input>]
 Options:
   -p, --pretty    美化 JSON 输出（默认紧凑单行）
   -d, --decode    反向：JSON → .cc
+  -e, --encode    正向：.cc → JSON（默认；显式形式）
   -h, --help      帮助
 ```
 

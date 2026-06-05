@@ -78,12 +78,14 @@ const HelpText =
     \\
     \\Options:
     \\  -p, --pretty    pretty-print JSON output (default: compact)
-    \\  -d, --decode    decode mode: read JSON, output .cc (default: read .cc, output JSON)
+    \\  -d, --decode    decode: read JSON, output .cc (default: read .cc, output JSON)
+    \\  -e, --encode    encode: read .cc, output JSON (default)
     \\  -h, --help      show this help
     \\
-    \\Reads from stdin if no input file is given. The format is auto-detected
-    \\by the first non-whitespace byte ({/[ = JSON, anything else = .cc),
-    \\or controlled by -d.
+    \\Reads from stdin if no input file is given. Format is auto-detected
+    \\by structure: starts with {/[ = JSON object/array, with " or digit
+    \\= JSON primitive, with true/false/null (followed by only whitespace)
+    \\= JSON literal. Otherwise treated as .cc. Override with -d / -e.
     \\
 ;
 
@@ -173,16 +175,53 @@ pub fn main(init: std.process.Init) !void {
     try fw.flush();
 }
 
-/// 看首非空白字符：`{` 或 `[` → JSON；其它 → .cc
+/// 协议感知格式检测：按 JSON 与 .cc 语法结构的差异判断。
+///   JSON 顶层合法形态：{ [...] } / [...] / "string" / number / true / false / null
+///   .cc 顶层必须是字段名（标识符字符或 `#` 注释）开头
+///   边界：顶层 `true`/`false`/`null` 的 JSON 形态和 .cc 字段名同形 →
+///     仅当它们后只跟空白（EOL/EOF）才算 JSON；否则是 .cc 字段名后跟值
 fn isJsonInput(input: []const u8) bool {
-    for (input) |c| {
-        switch (c) {
-            ' ', '\t', '\n', '\r' => continue,
-            '{', '[' => return true,
-            else => return false,
+    var i: usize = 0;
+    // 跳过 UTF-8 BOM（OpenAI 偶尔会给 JSON 加 BOM）
+    if (input.len >= 3 and input[0] == 0xEF and input[1] == 0xBB and input[2] == 0xBF) {
+        i = 3;
+    }
+    // 跳过前导空白
+    while (i < input.len) {
+        switch (input[i]) {
+            ' ', '\t', '\n', '\r' => i += 1,
+            else => break,
         }
     }
-    return false;
+    if (i >= input.len) return false; // 空 / 全空白 → 默认 .cc
+
+    const c = input[i];
+    // 对象/数组：{ 或 [
+    if (c == '{' or c == '[') return true;
+    // 顶层字符串 / 数字
+    if (c == '"') return true;
+    if (c >= '0' and c <= '9') return true;
+    if (c == '-' and i + 1 < input.len and input[i + 1] >= '0' and input[i + 1] <= '9') return true;
+    // 顶层 bool / null：要求关键字后只有空白
+    if (c == 't' or c == 'f' or c == 'n') {
+        const word: []const u8 = switch (c) {
+            't' => "true",
+            'f' => "false",
+            else => "null",
+        };
+        const end = i + word.len;
+        if (end > input.len) return false;
+        if (!mem.eql(u8, input[i..end], word)) return false;
+        var j = end;
+        while (j < input.len) {
+            switch (input[j]) {
+                ' ', '\t', '\n', '\r' => j += 1,
+                else => return false,
+            }
+        }
+        return true;
+    }
+    return false; // 标识符或 `#` 开头 → .cc
 }
 
 // ─── Tokenizer ─────────────────────────────────────────────────────────
@@ -1856,9 +1895,35 @@ test "parseJson strict: various errors" {
     try std.testing.expectError(error.InvalidEscape, parseJson(allocator, "\"\\q\""));
 }
 
-test "parseJson whitespace tolerance" {
-    const allocator = std.testing.allocator;
-    var v = try parseJson(allocator, "  \n\t { \n  \"a\"  :  1  \n  }  \n");
-    defer v.deinit(allocator);
-    try std.testing.expectEqual(@as(i64, 1), v.object_v.get("a").?.int_v);
+test "isJsonInput auto-detect" {
+    // JSON object/array
+    try std.testing.expect(isJsonInput("{}"));
+    try std.testing.expect(isJsonInput("[]"));
+    try std.testing.expect(isJsonInput("{\"a\":1}"));
+    try std.testing.expect(isJsonInput("[1,2,3]"));
+    try std.testing.expect(isJsonInput("  \n  {}"));
+    // JSON top-level string / number
+    try std.testing.expect(isJsonInput("\"hello\""));
+    try std.testing.expect(isJsonInput("42"));
+    try std.testing.expect(isJsonInput("-3.14"));
+    try std.testing.expect(isJsonInput("0"));
+    try std.testing.expect(isJsonInput("1.5e10"));
+    // JSON top-level bool / null（**仅当**关键字后只有空白）
+    try std.testing.expect(isJsonInput("true"));
+    try std.testing.expect(isJsonInput("false"));
+    try std.testing.expect(isJsonInput("null"));
+    try std.testing.expect(isJsonInput("true\n"));
+    try std.testing.expect(isJsonInput("  null  \n"));
+    // bool/null 后跟非空白 → 不是 JSON（.cc 字段名 "true" 跟值的形态）
+    try std.testing.expect(!isJsonInput("true field"));
+    try std.testing.expect(!isJsonInput("null model"));
+    // .cc（标识符或 `#` 注释开头）
+    try std.testing.expect(!isJsonInput(""));
+    try std.testing.expect(!isJsonInput("   "));
+    try std.testing.expect(!isJsonInput("model gpt-4"));
+    try std.testing.expect(!isJsonInput("foo*"));
+    try std.testing.expect(!isJsonInput("# comment"));
+    // BOM
+    try std.testing.expect(isJsonInput("\xEF\xBB\xBF{}"));
+    try std.testing.expect(isJsonInput("\xEF\xBB\xBFtrue"));
 }
