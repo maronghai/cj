@@ -1,0 +1,1 @@
+{"model":"gpt-4o-mini","tools":[{"type":"function","function":{"description":"Search the public web for a query","name":"web_search","parameters":{"properties":{"query":{"description":"The search query","type":"string"},"num_results":{"description":"Number of results to return","type":"integer"}},"type":"object","required":["query","num_results"]}}}]}

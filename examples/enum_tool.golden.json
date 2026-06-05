@@ -1,0 +1,1 @@
+{"model":"gpt-4o-mini","tools":[{"type":"function","function":{"description":"Set the temperature unit","name":"set_unit","parameters":{"properties":{"unit":{"description":"Temperature unit","type":"string","enum":["celsius","fahrenheit","kelvin"]}},"type":"object","required":["unit"]}}}]}

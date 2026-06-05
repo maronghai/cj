@@ -1,0 +1,1 @@
+{"model":"gpt-4o-mini","tools":[{"type":"function","function":{"description":"Get current weather for a location","name":"get_weather","parameters":{"properties":{"location":{"description":"City and state, e.g. San Francisco, CA","type":"string"}},"type":"object","required":["location"]}}}]}

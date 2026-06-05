@@ -1,0 +1,1 @@
+{"model":"gpt-4o-mini","messages":[{"role":"system","content":"You are a helpful coding assistant.\nRules:\n1. Always use TypeScript.\n2. Never use `any`.\n3. Write tests for everything.\nBe concise."},{"role":"user","content":"Write a function that adds two numbers."}]}
